@@ -16,11 +16,17 @@ function App() {
         .regex(/^[A-Za-z0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]*$/, 'Use only Latin characters');
 
     const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
-       const error = promptSchema.validateAll(event.target.value);
+        const newValue = event.target.value;
 
-        setErrors([...error]);
+        if (!newValue.trim()) {
+            setErrors(null);
+            setInputValue(null);
+            return;
+        }
 
-       setInputValue(event.target.value);
+        const error = promptSchema.validateAll(newValue);
+        setErrors(error.length > 0 ? [...error] : null);
+        setInputValue(newValue);
     }
 
   return (
