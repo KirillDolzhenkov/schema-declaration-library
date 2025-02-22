@@ -33,9 +33,13 @@ function App() {
                   onChange={handleInputChange}
               />
               {errors && (
-                  <ul style={{ color: 'red', marginTop: '5px', paddingLeft: '20px' }}>
+                  <ul style={{
+                      color: 'red', marginTop: '5px', paddingLeft: '20px' }}>
                       {errors.map((error, index) => (
-                          <li key={index}>{error}</li>
+                          <li
+                              style={{display: 'flex', flexDirection: 'row', alignItems: 'flex-start' }}
+                              key={index}
+                          >{error}</li>
                       ))}
                   </ul>
               )}

@@ -1,3 +1,4 @@
+// Тип для валидаторов
 type Validator<T> = (value: T) => null | string;
 
 // Интерфейс для результата валидации объекта
@@ -12,10 +13,11 @@ interface ArrayValidationResult {
     success: boolean;
 }
 
-// Базовый класс схемы
-class PromptSchema<T> {
+// Базовый класс схемы с поддержкой transform
+class PromptSchema<T, Output = T> {
     protected readonly checks: Validator<T>[] = [];
     protected isOptional: boolean = false;
+    protected transformFn?: (value: T) => Output;
 
     constructor(checks: Validator<T>[] = []) {
         this.checks = checks;
@@ -31,12 +33,19 @@ class PromptSchema<T> {
         return instance;
     }
 
-    parse(value: T): T {
+    transform<NewOutput>(fn: (value: T) => NewOutput): PromptSchema<T, NewOutput> {
+        const instance = new (this.constructor as any)(this.checks);
+        instance.isOptional = this.isOptional;
+        instance.transformFn = fn;
+        return instance;
+    }
+
+    parse(value: T): Output {
         const error = this.validate(value);
         if (error) {
             throw new Error(error);
         }
-        return value;
+        return this.transformFn ? this.transformFn(value) : (value as unknown as Output);
     }
 
     refine(validator: (value: T) => boolean, message = 'Custom validation failed'): this {
@@ -52,9 +61,13 @@ class PromptSchema<T> {
         });
     }
 
-    safeParse(value: T): { error?: string; success: boolean } {
+    safeParse(value: T): { error?: string; success: boolean; data?: Output } {
         const error = this.validate(value);
-        return error ? { success: false, error } : { success: true };
+        if (error) {
+            return { success: false, error };
+        }
+        const result = this.transformFn ? this.transformFn(value) : (value as unknown as Output);
+        return { success: true, data: result };
     }
 
     validate(value: T): null | string {
@@ -82,88 +95,88 @@ class PromptSchema<T> {
 }
 
 // Подкласс для булевых значений
-class BooleanSchema extends PromptSchema<boolean> {
-    false(message = 'Must be false'): BooleanSchema {
+class BooleanSchema<Output = boolean> extends PromptSchema<boolean, Output> {
+    false(message = 'Must be false'): BooleanSchema<Output> {
         return this.addValidator((value) => (value !== false ? message : null));
     }
 
-    true(message = 'Must be true'): BooleanSchema {
+    true(message = 'Must be true'): BooleanSchema<Output> {
         return this.addValidator((value) => (value !== true ? message : null));
     }
 }
 
 // Подкласс для чисел
-class NumberSchema extends PromptSchema<number> {
-    integer(message = 'Must be an integer'): NumberSchema {
+class NumberSchema<Output = number> extends PromptSchema<number, Output> {
+    integer(message = 'Must be an integer'): NumberSchema<Output> {
         return this.addValidator((value) => (typeof value === 'number' && !Number.isInteger(value) ? message : null));
     }
 
-    max(value: number, message = `Must be at most ${value}`): NumberSchema {
-        return this.addValidator((value) => (typeof value === 'number' && value > value ? message : null));
+    max(value: number, message = `Must be at most ${value}`): NumberSchema<Output> {
+        return this.addValidator((val) => (typeof val === 'number' && val > value ? message : null));
     }
 
-    min(value: number, message = `Must be at least ${value}`): NumberSchema {
-        return this.addValidator((value) => (typeof value === 'number' && value < value ? message : null));
+    min(value: number, message = `Must be at least ${value}`): NumberSchema<Output> {
+        return this.addValidator((val) => (typeof val === 'number' && val < value ? message : null));
     }
 
-    negative(message = 'Must be negative'): NumberSchema {
+    negative(message = 'Must be negative'): NumberSchema<Output> {
         return this.addValidator((value) => (typeof value === 'number' && value >= 0 ? message : null));
     }
 
-    nonnegative(message = 'Must be non-negative'): NumberSchema {
+    nonnegative(message = 'Must be non-negative'): NumberSchema<Output> {
         return this.addValidator((value) => (typeof value === 'number' && value < 0 ? message : null));
     }
 
-    positive(message = 'Must be positive'): NumberSchema {
+    positive(message = 'Must be positive'): NumberSchema<Output> {
         return this.addValidator((value) => (typeof value === 'number' && value <= 0 ? message : null));
     }
 }
 
 // Подкласс для строк
-class StringSchema extends PromptSchema<string> {
-    email(message = 'Must be a valid email'): StringSchema {
+class StringSchema<Output = string> extends PromptSchema<string, Output> {
+    email(message = 'Must be a valid email'): StringSchema<Output> {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return this.addValidator((value) => (typeof value === 'string' && !emailRegex.test(value) ? message : null));
     }
 
-    endsWith(suffix: string, message = `Must end with "${suffix}"`): StringSchema {
+    endsWith(suffix: string, message = `Must end with "${suffix}"`): StringSchema<Output> {
         return this.addValidator((value) => (typeof value === 'string' && !value.endsWith(suffix) ? message : null));
     }
 
-    max(length: number, message = `Must be at most ${length} characters`): StringSchema {
+    max(length: number, message = `Must be at most ${length} characters`): StringSchema<Output> {
         return this.addValidator((value) => (typeof value === 'string' && value.length > length ? message : null));
     }
 
-    min(length: number, message = `Must be at least ${length} characters`): StringSchema {
+    min(length: number, message = `Must be at least ${length} characters`): StringSchema<Output> {
         return this.addValidator((value) => (typeof value === 'string' && value.length < length ? message : null));
     }
 
-    regex(pattern: RegExp, message = 'Invalid format'): StringSchema {
+    regex(pattern: RegExp, message = 'Invalid format'): StringSchema<Output> {
         return this.addValidator((value) => (typeof value === 'string' && !pattern.test(value) ? message : null));
     }
 
-    startsWith(prefix: string, message = `Must start with "${prefix}"`): StringSchema {
+    startsWith(prefix: string, message = `Must start with "${prefix}"`): StringSchema<Output> {
         return this.addValidator((value) => (typeof value === 'string' && !value.startsWith(prefix) ? message : null));
     }
 
-    url(message = 'Must be a valid URL'): StringSchema {
+    url(message = 'Must be a valid URL'): StringSchema<Output> {
         const urlRegex = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w- ./?%&=]*)?$/;
         return this.addValidator((value) => (typeof value === 'string' && !urlRegex.test(value) ? message : null));
     }
 }
 
 // Подкласс для объектов
-class ObjectSchema<T extends Record<string, any>> extends PromptSchema<T> {
-    constructor(private readonly shape: { [K in keyof T]: PromptSchema<T[K]> }) {
+class ObjectSchema<T extends Record<string, any>, Output = T> extends PromptSchema<T, Output> {
+    constructor(private readonly shape: { [K in keyof T]: PromptSchema<T[K], any> }) {
         super();
     }
 
-    parse(value: T): T {
+    parse(value: T): Output {
         const result = this.safeParse(value);
         if (!result.success) {
             throw new Error(JSON.stringify(result.errors));
         }
-        return value;
+        return this.transformFn ? this.transformFn(value) : (value as unknown as Output);
     }
 
     safeParse(value: any): ObjectValidationResult {
@@ -201,25 +214,25 @@ class ObjectSchema<T extends Record<string, any>> extends PromptSchema<T> {
 }
 
 // Подкласс для массивов
-class ArraySchema<T> extends PromptSchema<T[]> {
+class ArraySchema<T, Output = T[]> extends PromptSchema<T[], Output> {
     constructor(private readonly itemSchema: PromptSchema<T>) {
         super();
     }
 
-    max(length: number, message = `Must have at most ${length} items`): ArraySchema<T> {
+    max(length: number, message = `Must have at most ${length} items`): ArraySchema<T, Output> {
         return this.addValidator((value) => (Array.isArray(value) && value.length > length ? message : null));
     }
 
-    min(length: number, message = `Must have at least ${length} items`): ArraySchema<T> {
+    min(length: number, message = `Must have at least ${length} items`): ArraySchema<T, Output> {
         return this.addValidator((value) => (Array.isArray(value) && value.length < length ? message : null));
     }
 
-    parse(value: T[]): T[] {
+    parse(value: T[]): Output {
         const result = this.safeParse(value);
         if (!result.success) {
             throw new Error(JSON.stringify(result.errors));
         }
-        return value;
+        return this.transformFn ? this.transformFn(value) : (value as unknown as Output);
     }
 
     safeParse(value: any): ArrayValidationResult {
@@ -247,7 +260,7 @@ class ArraySchema<T> extends PromptSchema<T[]> {
         return success ? { success: true } : { success: false, errors };
     }
 
-    unique(comparator?: (a: T, b: T) => boolean, message = 'Array must contain unique items'): ArraySchema<T> {
+    unique(comparator?: (a: T, b: T) => boolean, message = 'Array must contain unique items'): ArraySchema<T, Output> {
         return this.addValidator((value) => {
             if (!Array.isArray(value)) return null;
             for (let i = 0; i < value.length; i++) {
@@ -282,7 +295,7 @@ const PromptValidator = {
     number(): NumberSchema {
         return new NumberSchema();
     },
-    object<T extends Record<string, any>>(shape: { [K in keyof T]: PromptSchema<T[K]> }): ObjectSchema<T> {
+    object<T extends Record<string, any>>(shape: { [K in keyof T]: PromptSchema<T[K], any> }): ObjectSchema<T> {
         return new ObjectSchema<T>(shape);
     },
     string(): StringSchema {
